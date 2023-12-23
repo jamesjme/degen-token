@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract GroceryContract {
+    uint256 public charge;
+
+    constructor(uint256 _charge) {
+        charge = _charge;
+    }
+}
+
+contract DegenToken is ERC20, Ownable(msg.sender) {
+    event GroceryRedeemed(address indexed account, address groceryContract, uint256 total);
+
+    mapping(string => address) public groceryContracts;
+    mapping(address => string) public redeemerSelectedGroceries;
+
+    constructor() ERC20("DegenToken", "DTK") {}
+
+    function createGrocery(string memory groceryName, uint256 charge) external onlyOwner {
+        require(charge > 0, "Grocery charge must be greater than zero");
+
+        GroceryContract groceryContract = new GroceryContract(charge);
+        groceryContracts[groceryName] = address(groceryContract);
+    }
+
+    function redeemGrocery(string memory groceryName) external payable {
+        address groceryContractAddress = groceryContracts[groceryName];
+        require(groceryContractAddress != address(0), "Invalid grocery selected");
+
+        GroceryContract groceryContract = GroceryContract(groceryContractAddress);
+        uint256 groceryCharge = groceryContract.charge();
+    
+        _burn(msg.sender, groceryCharge);  // Deduct tokens from the redeemer
+
+        payable(owner()).transfer(msg.value); // Transfer funds to the contract owner
+        redeemerSelectedGroceries[msg.sender] = groceryName;
+
+        emit GroceryRedeemed(msg.sender, groceryContractAddress, groceryCharge);
+    }
+
+    function transferTokens(address redeemer, uint256 total) external {
+        require(redeemer != address(0), "Invalid redeemer address provided");
+        require(balanceOf(msg.sender) >= total, "Insufficient funds for token transfer");
+        _transfer(msg.sender, redeemer, total);
+    }
+
+    function mint(address to, uint256 total) external onlyOwner {
+        _mint(to, total);
+    }
+
+    function burn(uint256 total) external {
+        require(total > 0, "The total to destroy must be greater than zero");
+        require(balanceOf(msg.sender) >= total, "Insufficient funds for token destruction");
+        _burn(msg.sender, total);
+    }
+}
